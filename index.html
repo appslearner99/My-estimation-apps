@@ -1,1 +1,1969 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Site Log Suite — Attendance &amp; Machine Logbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js"></script>
+<style>
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #0e1012;
+  }
+
+  .shell-tabs {
+    display: flex;
+    background: #0e1012;
+    border-bottom: 3px solid #e8a33d;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .shell-tab {
+    flex: 1;
+    text-align: center;
+    padding: 14px 10px;
+    font-family: 'Oswald', Arial, sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #9aa1a7;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .shell-tab:hover:not(.active) { color: #edeae2; background: #1a1e22; }
+  .shell-tab.active { color: #e8a33d; background: #1e2327; }
+
+  .app-panel { display: none; }
+  .app-panel.active { display: block; }
+
+  /* ============ ATTENDANCE APP (scoped under .app-attendance) ============ */
+  :root {
+    --navy: #1F4E78;
+    --navy-light: #D9E1F2;
+    --gold: #FFF2CC;
+    --border: #B0B0B0;
+    --present: #C6EFCE;
+    --absent: #FFC7CE;
+    --half: #FFEB9C;
+    --leave: #D9D2E9;
+    --wo: #E2E2E2;
+  }
+  * { box-sizing: border-box; }
+  .app-attendance {
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+    padding: 16px;
+    background: #f5f6f8;
+    color: #222;
+  }
+  .app-attendance h1 {
+    font-size: 20px;
+    background: var(--navy);
+    color: #fff;
+    padding: 14px 18px;
+    border-radius: 8px;
+    margin: 0 0 14px 0;
+  }
+  .app-attendance .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 12px;
+    background: #fff;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .app-attendance .toolbar label { font-size: 13px; font-weight: bold; color: #444; }
+  .app-attendance .toolbar input, .app-attendance .toolbar select {
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 13px;
+  }
+  .app-attendance .toolbar button {
+    background: var(--navy);
+    color: #fff;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: bold;
+  }
+  .app-attendance .toolbar button.secondary {
+    background: #fff;
+    color: var(--navy);
+    border: 1px solid var(--navy);
+  }
+  .app-attendance .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    font-size: 12px;
+    margin-bottom: 12px;
+    background: #fff;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .app-attendance .legend span { display: flex; align-items: center; gap: 6px; }
+  .app-attendance .swatch { min-width: 30px; height: 24px; padding: 0 6px; border-radius: 4px; border: 1px solid #999; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; }
+  .app-attendance .table-wrap {
+    overflow-x: auto;
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+  }
+  .app-attendance table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  .app-attendance th, .app-attendance td { border: 1px solid var(--border); text-align: center; padding: 4px; }
+  .app-attendance th { background: var(--navy); color: #fff; position: sticky; top: 0; z-index: 2; white-space: nowrap; }
+  .app-attendance th.weekday-th { font-size: 10px; font-weight: normal; background: #2f5f8f; top: 27px; }
+  .app-attendance td.name-col, .app-attendance th.name-col { position: sticky; left: 0; background: #fff; z-index: 1; text-align: left; padding-left: 8px; min-width: 130px; }
+  .app-attendance th.name-col { background: var(--navy); z-index: 3; }
+  .app-attendance td.cat-col { min-width: 80px; }
+  .app-attendance td.day-cell { width: 40px; padding: 0; }
+  .app-attendance td.day-cell select {
+    width: 100%;
+    height: 32px;
+    border: none;
+    text-align: center;
+    text-align-last: center;
+    font-weight: 800;
+    font-size: 14px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .app-attendance td.total-col { background: var(--gold); font-weight: bold; min-width: 55px; }
+  .app-attendance td.calc-col { background: var(--navy-light); min-width: 45px; }
+  .app-attendance td.remarks-col { min-width: 100px; text-align: left; }
+  .app-attendance td.actions-col, .app-attendance th.actions-col { min-width: 30px; }
+  .app-attendance input.name-input, .app-attendance input.desig-input, .app-attendance input.cat-input, .app-attendance input.remarks-input { width: 100%; border: none; font-size: 12px; padding: 3px; font-family: inherit; background: transparent; }
+  .app-attendance .P { background: var(--present); color: #1a7a2e; }
+  .app-attendance .A { background: var(--absent); color: #b3001f; }
+  .app-attendance .H { background: var(--half); color: #8a6d00; }
+  .app-attendance .L { background: var(--leave); color: #4b2f8a; }
+  .app-attendance .WO { background: var(--wo); color: #555; }
+  .app-attendance tfoot td { background: var(--navy-light); font-weight: bold; }
+  .app-attendance .row-actions { display:flex; gap:4px; }
+  .app-attendance .row-actions button {
+    border: none; background: #eee; border-radius: 4px; cursor: pointer; font-size: 11px; padding: 3px 6px;
+  }
+  .app-attendance .status { font-size: 12px; color: #666; margin-top: 6px; }
+  .app-attendance .footer-note { font-size: 11px; color: #888; margin-top: 10px; }
+
+  @media print {
+    .app-attendance { background: #fff; padding: 0; }
+    .app-attendance .toolbar, .app-attendance #attPrintBtn, .app-attendance #addRowBtn, .app-attendance #resetBtn, .app-attendance #exportCsvBtn, .app-attendance .status, .app-attendance .footer-note, .app-attendance .row-actions, .app-attendance #yearlyTotalsBtn { display: none !important; }
+    .app-attendance td.actions-col, .app-attendance th.actions-col { display: none !important; }
+    .app-attendance h1 { border-radius: 0; font-size: 15px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .app-attendance .legend { border-radius: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .app-attendance .table-wrap { overflow: visible; border-radius: 0; border: none; }
+    .app-attendance table { width: 100%; font-size: 8px; border: 1.5px solid #000; }
+    .app-attendance th, .app-attendance td { border: 0.5px solid #555; padding: 1.5px 2px; white-space: normal; word-break: break-word; }
+    .app-attendance th { position: static; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .app-attendance td.name-col, .app-attendance th.name-col { position: static; min-width: 0; width: auto; }
+    .app-attendance td.cat-col { min-width: 0; }
+    .app-attendance td.total-col { min-width: 0; }
+    .app-attendance td.calc-col { min-width: 0; }
+    .app-attendance td.day-cell { width: auto; min-width: 0; }
+    .app-attendance td.remarks-col { min-width: 0; text-align: left; }
+    .app-attendance thead { display: table-header-group; }
+    .app-attendance th.weekday-th { top: auto; font-size: 7px; }
+    .app-attendance tr { page-break-inside: avoid; }
+    .app-attendance td.day-cell select {
+      -webkit-appearance: none; appearance: none;
+      border: none; background: transparent; pointer-events: none; font-size: 9px; font-weight: 800;
+    }
+    .app-attendance input.name-input, .app-attendance input.desig-input, .app-attendance input.cat-input, .app-attendance input.remarks-input {
+      border: none; pointer-events: none; font-size: 8px; padding: 1px;
+    }
+    .app-attendance .P, .app-attendance .A, .app-attendance .H, .app-attendance .L, .app-attendance .WO { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .app-attendance tfoot td { border-top: 1.5px solid #000; font-weight: 700; }
+    .app-attendance #printHeader { display: block !important; margin-bottom: 8px; font-size: 12px; font-weight: 700; border-bottom: 1.5px solid #000; padding-bottom: 6px; }
+    #yearlySummaryWrap { break-before: page; }
+  }
+  .app-attendance #printHeader { display: none; }
+
+
+  /* ============ MACHINE LOGBOOK APP (scoped under .app-machine) ============ */
+  :root{
+    --bg:#14171a;
+    --panel:#1e2327;
+    --panel-raised:#252b30;
+    --steel:#4a6c8c;
+    --steel-dim:#31424f;
+    --amber:#e8a33d;
+    --amber-dim:#8a6425;
+    --paper:#edeae2;
+    --paper-dim:#b7b3a8;
+    --rust:#b8503d;
+    --line:#333a3f;
+    --good:#6f9d6a;
+  }
+  *{box-sizing:border-box;}
+  .app-machine {
+    margin:0;
+    background:var(--bg);
+    color:var(--paper);
+    font-family:'JetBrains Mono', monospace;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app-machine h1, .app-machine h2, .app-machine h3, .app-machine .label, .app-machine button {font-family:'Oswald', sans-serif;}
+
+  .app-machine .wrap {max-width:760px;margin:0 auto;padding:20px 16px 60px;}
+
+  .app-machine header.top {
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    border-bottom:3px solid var(--amber);
+    padding-bottom:14px;
+    margin-bottom:18px;
+  }
+  .app-machine header.top h1 {
+    font-size:26px;
+    font-weight:600;
+    letter-spacing:0.3px;
+    margin:0;
+    color:var(--paper);
+  }
+  .app-machine header.top .sub {
+    font-size:12px;
+    color:var(--paper-dim);
+    margin-top:2px;
+  }
+  .app-machine .badges {display:flex;gap:8px;}
+  .app-machine .badge {
+    background:var(--panel-raised);
+    border:1px solid var(--line);
+    padding:8px 12px;
+    text-align:right;
+    min-width:110px;
+  }
+  .app-machine .badge .n {font-size:20px;font-weight:600;color:var(--amber);}
+  .app-machine .badge .l {font-size:10px;color:var(--paper-dim);letter-spacing:0.5px;}
+
+  .app-machine .sub-stats {display:flex;gap:16px;font-size:11px;color:var(--paper-dim);margin-top:6px;}
+  .app-machine .sub-stats b {color:var(--paper);font-weight:600;}
+
+  .app-machine .panel {
+    background:var(--panel);
+    border:1px solid var(--line);
+    padding:18px;
+    margin-bottom:18px;
+  }
+  .app-machine .panel h2 {
+    font-size:15px;
+    font-weight:500;
+    margin:0 0 14px;
+    color:var(--paper);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .app-machine .panel h2::before {
+    content:"";
+    width:8px;height:8px;
+    background:var(--amber);
+    display:inline-block;
+  }
+
+  .app-machine .field {margin-bottom:12px;}
+  .app-machine .field label {
+    display:block;
+    font-size:11px;
+    color:var(--paper-dim);
+    margin-bottom:5px;
+    letter-spacing:0.2px;
+  }
+  .app-machine .field input, .app-machine .field textarea {
+    width:100%;
+    background:var(--bg);
+    border:1px solid var(--line);
+    color:var(--paper);
+    padding:10px 10px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:15px;
+    border-radius:2px;
+  }
+  .app-machine .field input:focus, .app-machine .field textarea:focus {
+    outline:none;
+    border-color:var(--amber);
+  }
+  .app-machine .row2 {display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+
+  .app-machine .meter-row {
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+    margin-bottom:4px;
+  }
+  .app-machine .meter {
+    background:var(--panel-raised);
+    border:1px solid var(--steel-dim);
+    padding:12px;
+  }
+  .app-machine .meter label {
+    font-size:10px;
+    color:var(--paper-dim);
+    letter-spacing:0.5px;
+    display:block;
+    margin-bottom:6px;
+  }
+  .app-machine .meter input {
+    width:100%;
+    background:transparent;
+    border:none;
+    color:var(--amber);
+    font-size:24px;
+    font-weight:600;
+    padding:0;
+    font-family:'JetBrains Mono', monospace;
+  }
+  .app-machine .meter input:focus {outline:none;}
+  .app-machine .scan-btn {
+    margin-top:8px;
+    width:100%;
+    background:var(--steel-dim);
+    border:1px solid var(--steel);
+    color:var(--paper);
+    font-size:11px;
+    padding:7px 6px;
+    cursor:pointer;
+    letter-spacing:0.3px;
+  }
+  .app-machine .scan-btn:hover {background:var(--steel);}
+  .app-machine .scan-btn:disabled {opacity:0.5;cursor:wait;}
+
+  .app-machine .total-line {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    border-top:1px dashed var(--line);
+    margin-top:14px;
+    padding-top:12px;
+  }
+  .app-machine .total-line .t-label {font-size:12px;color:var(--paper-dim);}
+  .app-machine .total-line .t-value {font-size:22px;font-weight:600;color:var(--good);}
+
+  .app-machine .btn-row {display:flex;gap:10px;margin-top:16px;}
+  .app-machine .btn {
+    border:none;
+    padding:11px 18px;
+    font-size:13px;
+    letter-spacing:0.3px;
+    cursor:pointer;
+  }
+  .app-machine .btn-primary {background:var(--amber);color:#20180a;font-weight:600;}
+  .app-machine .btn-primary:hover {background:#f0b155;}
+  .app-machine .btn-ghost {background:transparent;border:1px solid var(--line);color:var(--paper-dim);}
+  .app-machine .btn-ghost:hover {border-color:var(--paper-dim);color:var(--paper);}
+  .app-machine .error {color:var(--rust);font-size:12px;margin-top:6px;display:none;}
+
+  .app-machine .log-entry {
+    border-bottom:1px solid var(--line);
+    padding:12px 0;
+    display:grid;
+    grid-template-columns:1fr auto;
+    gap:8px;
+  }
+  .app-machine .log-entry:last-child {border-bottom:none;}
+  .app-machine .log-entry .machine {font-size:14px;font-weight:500;color:var(--paper);font-family:'Oswald',sans-serif;}
+  .app-machine .log-entry .meta {font-size:11px;color:var(--paper-dim);margin-top:2px;}
+  .app-machine .log-entry .readings {font-size:12px;color:var(--paper-dim);margin-top:5px;}
+  .app-machine .log-entry .readings b {color:var(--paper);}
+  .app-machine .log-entry .readings .tank-ok {color:var(--good);}
+  .app-machine .log-entry .readings .tank-low {color:var(--rust);}
+  .app-machine .log-entry .hrs {
+    text-align:right;
+    font-size:20px;
+    font-weight:600;
+    color:var(--amber);
+    align-self:center;
+  }
+  .app-machine .log-entry .hrs .u {font-size:10px;color:var(--paper-dim);display:block;font-family:'Oswald',sans-serif;}
+  .app-machine .entry-actions {
+    grid-column:1/-1;
+    display:flex;
+    gap:14px;
+    margin-top:6px;
+  }
+  .app-machine .entry-actions button {
+    background:none;border:none;
+    color:var(--steel);
+    font-size:11px;
+    cursor:pointer;
+    padding:0;
+    font-family:'Oswald',sans-serif;
+    letter-spacing:0.3px;
+  }
+  .app-machine .entry-actions button.del {color:var(--rust);}
+  .app-machine .entry-actions button:hover {text-decoration:underline;}
+
+  .app-machine .empty {
+    text-align:center;
+    color:var(--paper-dim);
+    font-size:13px;
+    padding:30px 10px;
+  }
+
+  .app-machine .footer-actions {
+    display:flex;
+    gap:10px;
+    justify-content:flex-end;
+    margin-top:4px;
+  }
+
+  .app-machine input[type=file] {display:none;}
+
+  .app-machine .field select {
+    width:100%;
+    background:var(--bg);
+    border:1px solid var(--line);
+    color:var(--paper);
+    padding:10px 10px;
+    font-family:'JetBrains Mono', monospace;
+    font-size:15px;
+    border-radius:2px;
+  }
+  .app-machine .field select:focus {outline:none;border-color:var(--amber);}
+
+  .app-machine .op-row {
+    display:flex;
+    justify-content:space-between;
+    align-items:baseline;
+    padding:9px 0;
+    border-bottom:1px solid var(--line);
+    font-size:13px;
+  }
+  .app-machine .op-row:last-child {border-bottom:none;}
+  .app-machine .op-row .op-name {color:var(--paper);font-family:'Oswald',sans-serif;font-weight:500;}
+  .app-machine .op-row .op-fig {color:var(--paper-dim);font-size:11px;}
+  .app-machine .op-row .op-hrs {color:var(--amber);font-weight:600;font-size:15px;margin-left:8px;}
+
+  .app-machine .hint {font-size:10px;color:var(--steel);margin-top:5px;letter-spacing:0.2px;}
+
+  @media (max-width:480px){
+    .app-machine .badge {min-width:70px;padding:6px 8px;}
+    .app-machine .badge .n {font-size:16px;}
+    .app-machine .log-entry {grid-template-columns:1fr;}
+    .app-machine .log-entry .hrs {text-align:left;}
+  }
+
+  .app-machine .ocr-status {
+    font-size:10px;
+    color:var(--paper-dim);
+    margin-top:6px;
+    min-height:14px;
+  }
+
+  .app-machine .photo-preview {
+    display:block;
+    width:100%;
+    max-height:120px;
+    object-fit:cover;
+    margin-top:8px;
+    border:1px solid var(--steel-dim);
+    cursor:pointer;
+  }
+
+  .app-machine .entry-photos {
+    display:flex;
+    gap:6px;
+    margin-top:8px;
+  }
+  .app-machine .photo-block {
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:2px;
+  }
+  .app-machine .entry-photos img {
+    width:56px;
+    height:56px;
+    object-fit:cover;
+    border:1px solid var(--line);
+    cursor:pointer;
+  }
+  .app-machine .photo-cap {
+    display:none;
+    font-size:10px;
+    color:var(--paper-dim);
+  }
+
+  .app-machine .lightbox {
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.85);
+    z-index:100;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+    cursor:zoom-out;
+  }
+  .app-machine .lightbox.open {display:flex;}
+  .app-machine .lightbox img {
+    max-width:100%;
+    max-height:100%;
+    border:2px solid var(--amber);
+  }
+
+  @media print{
+    @page { size: A4; margin: 14mm; }
+
+    .app-machine {background:#fff; color:#000; font-family: Arial, Helvetica, sans-serif;}
+    .app-machine * {-webkit-print-color-adjust:exact; print-color-adjust:exact;}
+    .app-machine .wrap {max-width:100%; margin:0; padding:0;}
+
+    /* Hide anything that is only useful for data-entry / on-screen interaction */
+    .app-machine .panel:first-of-type,
+    .app-machine .btn-row, .app-machine .scan-btn, .app-machine .entry-actions,
+    .app-machine .footer-actions, .app-machine #fileInput, .app-machine .lightbox,
+    .app-machine .ocr-status, .app-machine .hint, .app-machine .sub-stats,
+    .app-machine .panel:nth-of-type(2) /* Filter & totals by operator panel */
+      {display:none !important;}
+    .app-machine #operatorFilter, .app-machine label[for="operatorFilter"] {display:none !important;}
+
+    /* Header */
+    .app-machine header.top {border-bottom:2px solid #000; margin-bottom:10px; padding-bottom:8px;}
+    .app-machine header.top h1 {color:#000; font-size:20px; font-weight:700;}
+    .app-machine header.top .sub {color:#333; font-size:11px;}
+
+    /* Summary badges -> a clean bordered strip */
+    .app-machine .badges {display:flex; gap:0; border:1px solid #000; margin-bottom:14px;}
+    .app-machine .badge {background:#fff; border:none; border-right:1px solid #000; flex:1; text-align:center; padding:6px 4px;}
+    .app-machine .badge:last-child {border-right:none;}
+    .app-machine .badge .n {color:#000; font-weight:700; font-size:16px;}
+    .app-machine .badge .l {color:#333; font-size:9px;}
+
+    .app-machine .panel {background:#fff; border:1px solid #000; padding:10px 12px; break-inside:avoid; margin-bottom:10px;}
+    .app-machine .panel h2 {color:#000; font-weight:700; font-size:13px; border-bottom:1px solid #000; padding-bottom:5px;}
+    .app-machine .panel h2::before {display:none;}
+
+    /* Each log entry becomes a clearly bordered, compact record with no wasted space */
+    .app-machine .log-entry {
+      border:1px solid #000 !important;
+      border-bottom:1px solid #000 !important;
+      padding:8px 10px;
+      margin-bottom:8px;
+      break-inside:avoid;
+      page-break-inside:avoid;
+      display:block;
+    }
+    .app-machine .log-entry .machine {color:#000; font-weight:700; font-size:14px; text-decoration:underline;}
+    .app-machine .log-entry .meta {color:#000; font-weight:700; font-size:11px; margin-top:2px;}
+    .app-machine .log-entry .readings {color:#000; font-size:12px; margin-top:4px; line-height:1.5;}
+    .app-machine .log-entry .readings b {color:#000; font-weight:700; text-decoration:underline;}
+    .app-machine .log-entry .readings .tank-ok, .app-machine .log-entry .readings .tank-low {color:#000; font-weight:700;}
+    .app-machine .log-entry .hrs {
+      display:inline-block;
+      color:#000;
+      font-weight:700;
+      font-size:15px;
+      text-decoration:underline;
+      margin-top:6px;
+    }
+    .app-machine .log-entry .hrs .u {color:#000; font-size:10px; display:inline; margin-left:3px;}
+
+    /* Photos: bigger and sharper on the page, each clearly labelled */
+    .app-machine .entry-photos {gap:12px; margin-top:8px;}
+    .app-machine .entry-photos img {
+      width:180px; height:180px;
+      object-fit:contain;
+      background:#fff;
+      border:1px solid #000;
+      cursor:default;
+      image-rendering:auto;
+    }
+    .app-machine .photo-cap {
+      display:block;
+      color:#000;
+      font-weight:700;
+      font-size:10px;
+      margin-top:2px;
+      text-align:center;
+    }
+
+    .app-machine .op-row {color:#000;}
+    .app-machine .op-row .op-name, .app-machine .op-row .op-hrs, .app-machine .op-row .op-fig {color:#000;}
+  }
+
+
+  @media print {
+    .shell-tabs { display: none !important; }
+    .app-panel { display: none !important; }
+    .app-panel.active { display: block !important; }
+    body { background: #fff; }
+  }
+
+</style>
+</head>
+<body>
+
+<div class="shell-tabs">
+  <button class="shell-tab active" data-tab="attendance" type="button">Attendance Log</button>
+  <button class="shell-tab" data-tab="machine" type="button">Machine Logbook</button>
+</div>
+
+<div class="app-panel active" id="panel-attendance">
+<div class="app-attendance">
+
+<h1>Monthly Attendance Log Book — Labour &amp; Drivers</h1>
+<div id="printHeader"></div>
+
+<div class="toolbar">
+  <label>Company / Site</label>
+  <input id="companyName" type="text" placeholder="Enter company or site name" style="width:200px">
+  <label>Month</label>
+  <select id="monthSelect"></select>
+  <label>Year</label>
+  <input id="yearInput" type="number" style="width:80px">
+  <button id="addRowBtn">+ Add Worker</button>
+  <button class="secondary" id="resetBtn">Reset All Marks</button>
+  <button class="secondary" id="attPrintBtn">🖨 Print</button>
+  <button class="secondary" id="exportCsvBtn">⬇ Export CSV</button>
+  <label class="secondary" style="background:#fff; border:1px solid #1F4E78; color:#1F4E78; padding:8px 14px; border-radius:5px; cursor:pointer; font-weight:bold; font-size:13px;">
+    ⬆ Import CSV
+    <input type="file" id="importCsvInput" accept=".csv" style="display:none;">
+  </label>
+  <button class="secondary" id="yearlyTotalsBtn">📊 Show Yearly Totals (All Months)</button>
+</div>
+
+<div class="legend">
+  <span><span class="swatch P">P</span> Present</span>
+  <span><span class="swatch A">A</span> Absent</span>
+  <span><span class="swatch H">H</span> Half Day (0.5)</span>
+  <span><span class="swatch L">L</span> Leave</span>
+  <span><span class="swatch WO">WO</span> Weekly Off</span>
+</div>
+
+<div class="table-wrap">
+  <datalist id="categoryOptions"></datalist>
+  <table id="attTable">
+    <thead>
+      <tr id="headerRow"></tr>
+      <tr id="headerRow2"></tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+    <tfoot>
+      <tr id="footerRow"></tr>
+    </tfoot>
+  </table>
+</div>
+
+<div class="status" id="statusMsg">Loading...</div>
+<div class="footer-note">Data is saved automatically to this device/session. Tap a day cell's dropdown to mark attendance. Total Days Worked = Present + (Half Days × 0.5).</div>
+
+<div id="yearlySummaryWrap" style="display:none; margin-top:16px;">
+  <h1 style="font-size:16px;">Yearly Totals — All Months (<span id="yearlySummaryYear"></span>)</h1>
+  <div class="table-wrap">
+    <table id="yearlySummaryTable">
+      <thead>
+        <tr>
+          <th>Name</th><th>Category</th><th>Description</th>
+          <th>Present</th><th>Half</th><th>Absent</th><th>Leave</th><th>Total Days Worked</th>
+        </tr>
+      </thead>
+      <tbody id="yearlySummaryBody"></tbody>
+      <tfoot>
+        <tr id="yearlySummaryFooter"></tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+
+</div>
+</div>
+
+<div class="app-panel" id="panel-machine">
+<div class="app-machine">
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Machine Logbook</h1>
+      <div class="sub">Hour meter readings and service log</div>
+    </div>
+    <div class="badges">
+      <div class="badge">
+        <div class="n" id="grandTotal">0.0</div>
+        <div class="l">total hrs logged</div>
+      </div>
+      <div class="badge">
+        <div class="n" id="fuelRateAvg">0.00</div>
+        <div class="l">fuel L/hr</div>
+      </div>
+      <div class="badge">
+        <div class="n" id="fuelBalanceTotal">0.0</div>
+        <div class="l">fuel balance L</div>
+      </div>
+      <div class="badge">
+        <div class="n" id="fuelTotalBadge">0.0</div>
+        <div class="l">total fuel L</div>
+      </div>
+      <div class="badge">
+        <div class="n" id="fuelCostTotalBadge">0.0</div>
+        <div class="l">total fuel amount</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="panel">
+    <h2>New entry</h2>
+
+    <div class="field">
+      <label for="machine">Machine / equipment ID</label>
+      <input type="text" id="machine" placeholder="e.g. Excavator EX-204">
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="date">Date</label>
+        <input type="date" id="date">
+      </div>
+      <div class="field">
+        <label for="operator">Operator (optional)</label>
+        <input type="text" id="operator" placeholder="Name" list="operatorNames" autocomplete="off">
+        <datalist id="operatorNames"></datalist>
+      </div>
+    </div>
+
+    <div class="meter-row">
+      <div class="meter">
+        <label>Initial reading (hrs)</label>
+        <input type="number" step="0.1" id="initial" placeholder="0.0">
+        <button class="scan-btn" data-target="initial">Scan from photo</button>
+        <div class="ocr-status"></div>
+        <img class="photo-preview" id="initialPreview" style="display:none;">
+      </div>
+      <div class="meter">
+        <label>Final reading (hrs)</label>
+        <input type="number" step="0.1" id="final" placeholder="0.0">
+        <button class="scan-btn" data-target="final">Scan from photo</button>
+        <div class="ocr-status"></div>
+        <img class="photo-preview" id="finalPreview" style="display:none;">
+      </div>
+    </div>
+    <input type="file" id="fileInput" accept="image/*">
+
+    <div class="row2" style="margin-top:12px;">
+      <div class="field">
+        <label for="fuelRefill">Fuel refill (L)</label>
+        <input type="number" step="0.1" id="fuelRefill" placeholder="0.0">
+      </div>
+      <div class="field">
+        <label for="fuelPriceRate">Fuel rate (amount per L, enter on refill)</label>
+        <input type="number" step="0.01" id="fuelPriceRate" placeholder="0.00">
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="avgFuelConsumption">Avg fuel consumption (L/hr)</label>
+        <input type="number" step="0.01" id="avgFuelConsumption" placeholder="0.00">
+        <div class="hint" id="avgFuelHint"></div>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="field">
+        <label for="location">Location (optional)</label>
+        <input type="text" id="location" placeholder="e.g. North yard">
+      </div>
+      <div class="field">
+        <label for="description">Description (optional)</label>
+        <input type="text" id="description" placeholder="Job / task notes">
+      </div>
+    </div>
+
+    <div class="total-line">
+      <span class="t-label">Hours this entry</span>
+      <span class="t-value" id="entryTotal">0.0 hrs</span>
+    </div>
+    <div class="sub-stats">
+      <span>Expected fuel use: <b id="entryExpectedFuel">0.0</b> L (avg &times; hrs)</span>
+      <span>Fuel balance: <b id="entryFuelBalance">0.0</b> L</span>
+      <span>Fuel amount: <b id="entryFuelCost">0.0</b> (refill &times; rate)</span>
+    </div>
+    <div class="error" id="formError">Final reading must be greater than or equal to initial reading.</div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="saveBtn">Save entry</button>
+      <button class="btn btn-ghost" id="clearBtn">Clear</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Filter &amp; totals by operator</h2>
+    <div class="field">
+      <label for="operatorFilter">Filter log by name</label>
+      <select id="operatorFilter">
+        <option value="">All operators</option>
+      </select>
+    </div>
+    <div id="operatorTotals"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Saved log</h2>
+    <div id="logList"><div class="empty">Loading...</div></div>
+    <div class="footer-actions">
+      <button class="btn btn-ghost" id="printBtn">Print / Save as PDF</button>
+      <button class="btn btn-ghost" id="exportBtn">Export CSV</button>
+    </div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <img id="lightboxImg" src="">
+</div>
+
+
+</div>
+</div>
+
+<script>
+// ---- Shell: tab switching between the two apps ----
+(function() {
+  var tabs = document.querySelectorAll('.shell-tab');
+  var panels = {
+    attendance: document.getElementById('panel-attendance'),
+    machine: document.getElementById('panel-machine')
+  };
+  tabs.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      tabs.forEach(function(b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      Object.keys(panels).forEach(function(k) { panels[k].classList.remove('active'); });
+      panels[btn.dataset.tab].classList.add('active');
+    });
+  });
+})();
+</script>
+
+<script>
+// ============ ATTENDANCE APP LOGIC (isolated scope) ============
+(function() {
+
+const CODES = ["", "P", "A", "H", "L", "WO"];
+const STORAGE_KEY = "attendance-log-v1";
+let state = null;
+let saveTimeout = null;
+
+function daysInMonth(year, month) {
+  return new Date(year, month, 0).getDate();
+}
+
+function monthKeyOf(year, month) {
+  return year + "-" + month;
+}
+
+function getWorkerMarks(worker) {
+  const key = monthKeyOf(state.year, state.month);
+  if (!worker.marksByMonth) worker.marksByMonth = {};
+  if (!worker.marksByMonth[key]) worker.marksByMonth[key] = {};
+  return worker.marksByMonth[key];
+}
+
+function defaultState() {
+  const now = new Date();
+  return {
+    company: "",
+    month: now.getMonth() + 1,
+    year: now.getFullYear(),
+    workers: [
+      { name: "Ramesh Kumar", category: "Labour", designation: "Mason", marksByMonth: {} },
+      { name: "Suresh Yadav", category: "Labour", designation: "Helper", marksByMonth: {} },
+      { name: "Vinod Singh", category: "Driver", designation: "Truck Driver", marksByMonth: {} }
+    ]
+  };
+}
+
+async function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      state = JSON.parse(raw);
+      migrateOldMarks();
+      return;
+    }
+  } catch (e) {
+    // storage unavailable or corrupted - fall back to default
+  }
+  state = defaultState();
+}
+
+function migrateOldMarks() {
+  // Old versions stored a single flat "marks" object per worker (shared across all months).
+  // Move that into marksByMonth under the month/year that was active when it was saved.
+  if (!state.workers) return;
+  const key = monthKeyOf(state.year, state.month);
+  state.workers.forEach(w => {
+    if (w.marks && !w.marksByMonth) {
+      w.marksByMonth = { [key]: w.marks };
+      delete w.marks;
+    } else if (!w.marksByMonth) {
+      w.marksByMonth = {};
+    }
+  });
+}
+
+function scheduleSave() {
+  document.getElementById("statusMsg").textContent = "Saving...";
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      document.getElementById("statusMsg").textContent = "All changes saved to this browser.";
+    } catch (e) {
+      document.getElementById("statusMsg").textContent = "Save failed — this browser may be blocking local storage (e.g. private/incognito mode).";
+    }
+  }, 400);
+}
+
+function computeTotals(marks, numDays) {
+  let present = 0, half = 0, absent = 0, leave = 0;
+  for (let d = 1; d <= numDays; d++) {
+    const v = marks[d];
+    if (v === "P") present++;
+    else if (v === "A") absent++;
+    else if (v === "H") half++;
+    else if (v === "L") leave++;
+  }
+  return { present, half, absent, leave, totalWorked: present + half * 0.5 };
+}
+
+function monthName(m) {
+  return ["January","February","March","April","May","June","July","August","September","October","November","December"][m-1];
+}
+
+function weekdayLetter(year, month, day) {
+  const dt = new Date(year, month - 1, day);
+  return ["S","M","T","W","T","F","S"][dt.getDay()];
+}
+
+// Collects every distinct category value typed across all workers so it can be
+// offered as a suggestion (via <datalist>) the next time someone types a category.
+function refreshCategoryOptions() {
+  const dl = document.getElementById("categoryOptions");
+  const seen = new Set();
+  state.workers.forEach(w => {
+    const c = (w.category || "").trim();
+    if (c) seen.add(c);
+  });
+  ["Labour", "Driver"].forEach(c => seen.add(c));
+  dl.innerHTML = "";
+  Array.from(seen).sort((a, b) => a.localeCompare(b)).forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c;
+    dl.appendChild(opt);
+  });
+}
+
+function render() {
+  const numDays = daysInMonth(state.year, state.month);
+  refreshCategoryOptions();
+
+  document.getElementById("companyName").value = state.company;
+  document.getElementById("yearInput").value = state.year;
+
+  const monthSelect = document.getElementById("monthSelect");
+  if (monthSelect.options.length === 0) {
+    for (let m = 1; m <= 12; m++) {
+      const opt = document.createElement("option");
+      opt.value = m;
+      opt.textContent = monthName(m);
+      monthSelect.appendChild(opt);
+    }
+  }
+  monthSelect.value = state.month;
+
+  // Header row 1: labels + day numbers
+  const headerRow = document.getElementById("headerRow");
+  headerRow.innerHTML = "";
+  const thSno = document.createElement("th"); thSno.textContent = "#"; thSno.rowSpan = 2; headerRow.appendChild(thSno);
+  const thName = document.createElement("th"); thName.textContent = "Name"; thName.className = "name-col"; thName.rowSpan = 2; headerRow.appendChild(thName);
+  const thCat = document.createElement("th"); thCat.textContent = "Category"; thCat.rowSpan = 2; headerRow.appendChild(thCat);
+  const thDesig = document.createElement("th"); thDesig.textContent = "Description"; thDesig.rowSpan = 2; headerRow.appendChild(thDesig);
+  for (let d = 1; d <= numDays; d++) {
+    const th = document.createElement("th");
+    th.textContent = d;
+    headerRow.appendChild(th);
+  }
+  ["Present","Half","Absent","Leave","TOTAL\nWORKED","Remarks",""].forEach(t => {
+    const th = document.createElement("th");
+    th.textContent = t;
+    th.rowSpan = 2;
+    if (t === "") th.className = "actions-col";
+    headerRow.appendChild(th);
+  });
+
+  // Header row 2: weekday letters under each date
+  const headerRow2 = document.getElementById("headerRow2");
+  headerRow2.innerHTML = "";
+  for (let d = 1; d <= numDays; d++) {
+    const th = document.createElement("th");
+    th.textContent = weekdayLetter(state.year, state.month, d);
+    th.className = "weekday-th";
+    headerRow2.appendChild(th);
+  }
+
+  // Body
+  const tbody = document.getElementById("tableBody");
+  tbody.innerHTML = "";
+  state.workers.forEach((worker, idx) => {
+    const tr = document.createElement("tr");
+
+    const tdSno = document.createElement("td");
+    tdSno.textContent = idx + 1;
+    tr.appendChild(tdSno);
+
+    const tdName = document.createElement("td");
+    tdName.className = "name-col";
+    const nameInput = document.createElement("input");
+    nameInput.className = "name-input";
+    nameInput.value = worker.name;
+    nameInput.placeholder = "Worker name";
+    nameInput.addEventListener("input", e => { worker.name = e.target.value; scheduleSave(); });
+    tdName.appendChild(nameInput);
+    tr.appendChild(tdName);
+
+    const tdCat = document.createElement("td");
+    tdCat.className = "cat-col";
+    const catInput = document.createElement("input");
+    catInput.className = "cat-input";
+    catInput.setAttribute("list", "categoryOptions");
+    catInput.placeholder = "Category";
+    catInput.value = worker.category || "";
+    catInput.addEventListener("input", e => { worker.category = e.target.value; scheduleSave(); });
+    catInput.addEventListener("change", () => { refreshCategoryOptions(); });
+    tdCat.appendChild(catInput);
+    tr.appendChild(tdCat);
+
+    const tdDesig = document.createElement("td");
+    const desigInput = document.createElement("input");
+    desigInput.className = "desig-input";
+    desigInput.value = worker.designation || "";
+    desigInput.placeholder = "Description";
+    desigInput.addEventListener("input", e => { worker.designation = e.target.value; scheduleSave(); });
+    tdDesig.appendChild(desigInput);
+    tr.appendChild(tdDesig);
+
+    for (let d = 1; d <= numDays; d++) {
+      const td = document.createElement("td");
+      td.className = "day-cell";
+      const sel = document.createElement("select");
+      const marks = getWorkerMarks(worker);
+      const currentVal = marks[d] || "";
+      CODES.forEach(code => {
+        const opt = document.createElement("option");
+        opt.value = code;
+        opt.textContent = code === "" ? "-" : code;
+        if (code === currentVal) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      if (currentVal) { sel.classList.add(currentVal); td.classList.add(currentVal); }
+      sel.addEventListener("change", e => {
+        const val = e.target.value;
+        const m = getWorkerMarks(worker);
+        if (val) m[d] = val; else delete m[d];
+        sel.className = "";
+        td.className = "day-cell";
+        if (val) { sel.classList.add(val); td.classList.add(val); }
+        renderTotalsRow(tr, worker, numDays);
+        renderFooter(numDays);
+        scheduleSave();
+      });
+      td.appendChild(sel);
+      tr.appendChild(td);
+    }
+
+    // totals cells
+    const totals = computeTotals(getWorkerMarks(worker), numDays);
+    const totalCells = {};
+    ["present","half","absent","leave"].forEach(key => {
+      const td = document.createElement("td");
+      td.className = "calc-col";
+      td.textContent = totals[key];
+      tr.appendChild(td);
+      totalCells[key] = td;
+    });
+    const tdTotalWorked = document.createElement("td");
+    tdTotalWorked.className = "total-col";
+    tdTotalWorked.textContent = totals.totalWorked;
+    tr.appendChild(tdTotalWorked);
+    tr._totalCells = totalCells;
+    tr._totalWorkedCell = tdTotalWorked;
+
+    const tdRemarks = document.createElement("td");
+    tdRemarks.className = "remarks-col";
+    const remarksInput = document.createElement("input");
+    remarksInput.className = "remarks-input";
+    remarksInput.value = worker.remarks || "";
+    remarksInput.placeholder = "Remarks";
+    remarksInput.style.width = "100%";
+    remarksInput.addEventListener("input", e => { worker.remarks = e.target.value; scheduleSave(); });
+    tdRemarks.appendChild(remarksInput);
+    tr.appendChild(tdRemarks);
+
+    const tdActions = document.createElement("td");
+    tdActions.className = "actions-col";
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "✕";
+    delBtn.title = "Remove worker";
+    delBtn.addEventListener("click", () => {
+      state.workers.splice(idx, 1);
+      render();
+      scheduleSave();
+    });
+    tdActions.appendChild(delBtn);
+    tr.appendChild(tdActions);
+
+    tbody.appendChild(tr);
+  });
+
+  renderFooter(numDays);
+  if (yearlySummaryVisible) renderYearlySummary();
+  document.getElementById("statusMsg").textContent = "Ready.";
+}
+
+function renderTotalsRow(tr, worker, numDays) {
+  const totals = computeTotals(getWorkerMarks(worker), numDays);
+  tr._totalCells.present.textContent = totals.present;
+  tr._totalCells.half.textContent = totals.half;
+  tr._totalCells.absent.textContent = totals.absent;
+  tr._totalCells.leave.textContent = totals.leave;
+  tr._totalWorkedCell.textContent = totals.totalWorked;
+}
+
+function renderFooter(numDays) {
+  const footerRow = document.getElementById("footerRow");
+  footerRow.innerHTML = "";
+  const tdLabel = document.createElement("td");
+  tdLabel.colSpan = 4 + numDays;
+  tdLabel.textContent = "GRAND TOTAL";
+  tdLabel.style.textAlign = "right";
+  footerRow.appendChild(tdLabel);
+
+  let sumPresent = 0, sumHalf = 0, sumAbsent = 0, sumLeave = 0, sumWorked = 0;
+  state.workers.forEach(w => {
+    const t = computeTotals(getWorkerMarks(w), numDays);
+    sumPresent += t.present;
+    sumHalf += t.half;
+    sumAbsent += t.absent;
+    sumLeave += t.leave;
+    sumWorked += t.totalWorked;
+  });
+  [sumPresent, sumHalf, sumAbsent, sumLeave, sumWorked].forEach(v => {
+    const td = document.createElement("td");
+    td.textContent = v;
+    footerRow.appendChild(td);
+  });
+  const tdBlank = document.createElement("td");
+  footerRow.appendChild(tdBlank);
+  const tdBlank2 = document.createElement("td");
+  tdBlank2.className = "actions-col";
+  footerRow.appendChild(tdBlank2);
+}
+
+// Sums a worker's attendance totals across all 12 months of state.year,
+// regardless of which month is currently selected in the main table.
+function computeYearlyTotals(worker) {
+  let present = 0, half = 0, absent = 0, leave = 0, totalWorked = 0;
+  for (let m = 1; m <= 12; m++) {
+    const key = monthKeyOf(state.year, m);
+    const marks = (worker.marksByMonth && worker.marksByMonth[key]) || {};
+    const numDays = daysInMonth(state.year, m);
+    const t = computeTotals(marks, numDays);
+    present += t.present;
+    half += t.half;
+    absent += t.absent;
+    leave += t.leave;
+    totalWorked += t.totalWorked;
+  }
+  return { present, half, absent, leave, totalWorked };
+}
+
+let yearlySummaryVisible = false;
+
+function renderYearlySummary() {
+  document.getElementById("yearlySummaryYear").textContent = state.year;
+  const body = document.getElementById("yearlySummaryBody");
+  body.innerHTML = "";
+  let sumPresent = 0, sumHalf = 0, sumAbsent = 0, sumLeave = 0, sumWorked = 0;
+  state.workers.forEach(w => {
+    const t = computeYearlyTotals(w);
+    sumPresent += t.present;
+    sumHalf += t.half;
+    sumAbsent += t.absent;
+    sumLeave += t.leave;
+    sumWorked += t.totalWorked;
+    const tr = document.createElement("tr");
+    [w.name || "", w.category || "", w.designation || "", t.present, t.half, t.absent, t.leave, t.totalWorked].forEach(v => {
+      const td = document.createElement("td");
+      td.textContent = v;
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+  const footerRow = document.getElementById("yearlySummaryFooter");
+  footerRow.innerHTML = "";
+  const tdLabel = document.createElement("td");
+  tdLabel.colSpan = 3;
+  tdLabel.textContent = "GRAND TOTAL (YEAR)";
+  tdLabel.style.textAlign = "right";
+  footerRow.appendChild(tdLabel);
+  [sumPresent, sumHalf, sumAbsent, sumLeave, sumWorked].forEach(v => {
+    const td = document.createElement("td");
+    td.textContent = v;
+    footerRow.appendChild(td);
+  });
+}
+
+function attachToolbarEvents() {
+  document.getElementById("companyName").addEventListener("input", e => {
+    state.company = e.target.value;
+    scheduleSave();
+  });
+  document.getElementById("monthSelect").addEventListener("change", e => {
+    state.month = parseInt(e.target.value, 10);
+    render();
+    scheduleSave();
+  });
+  document.getElementById("yearInput").addEventListener("input", e => {
+    const y = parseInt(e.target.value, 10);
+    if (!isNaN(y)) {
+      state.year = y;
+      render();
+      scheduleSave();
+    }
+  });
+  document.getElementById("yearlyTotalsBtn").addEventListener("click", () => {
+    yearlySummaryVisible = !yearlySummaryVisible;
+    document.getElementById("yearlySummaryWrap").style.display = yearlySummaryVisible ? "block" : "none";
+    document.getElementById("yearlyTotalsBtn").textContent = yearlySummaryVisible ? "📊 Hide Yearly Totals" : "📊 Show Yearly Totals (All Months)";
+    if (yearlySummaryVisible) renderYearlySummary();
+  });
+  document.getElementById("addRowBtn").addEventListener("click", () => {
+    state.workers.push({ name: "", category: "Labour", designation: "", marksByMonth: {} });
+    render();
+    scheduleSave();
+  });
+  document.getElementById("resetBtn").addEventListener("click", () => {
+    if (confirm("Clear all attendance marks for every worker THIS MONTH only? Other months and names will be kept.")) {
+      state.workers.forEach(w => { getWorkerMarks(w); w.marksByMonth[monthKeyOf(state.year, state.month)] = {}; });
+      render();
+      scheduleSave();
+    }
+  });
+  document.getElementById("attPrintBtn").addEventListener("click", () => {
+    updatePrintHeader();
+    const pageStyle = document.createElement("style");
+    pageStyle.id = "attLandscapePageStyle";
+    pageStyle.textContent = "@page { size: A4 landscape; margin: 10mm; }";
+    document.head.appendChild(pageStyle);
+    window.print();
+  });
+  window.addEventListener("beforeprint", updatePrintHeader);
+  window.addEventListener("afterprint", () => {
+    const s = document.getElementById("attLandscapePageStyle");
+    if (s) s.remove();
+  });
+
+  document.getElementById("exportCsvBtn").addEventListener("click", exportCsv);
+  document.getElementById("importCsvInput").addEventListener("change", handleImportCsv);
+}
+
+function csvEscape(val) {
+  const s = String(val === undefined || val === null ? "" : val);
+  if (/[",\n]/.test(s)) {
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  return s;
+}
+
+function exportCsv() {
+  const numDays = daysInMonth(state.year, state.month);
+  const headerCols = ["S.No", "Name", "Category", "Description"];
+  for (let d = 1; d <= numDays; d++) headerCols.push("Day" + d);
+  headerCols.push("Present", "Half", "Absent", "Leave", "TotalDaysWorked", "Remarks");
+
+  const lines = [headerCols.map(csvEscape).join(",")];
+
+  state.workers.forEach((w, idx) => {
+    const marks = getWorkerMarks(w);
+    const totals = computeTotals(marks, numDays);
+    const row = [idx + 1, w.name || "", w.category || "", w.designation || ""];
+    for (let d = 1; d <= numDays; d++) row.push(marks[d] || "");
+    row.push(totals.present, totals.half, totals.absent, totals.leave, totals.totalWorked, w.remarks || "");
+    lines.push(row.map(csvEscape).join(","));
+  });
+
+  const csvContent = "\uFEFF" + lines.join("\r\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const safeCompany = (state.company || "attendance").replace(/[^a-z0-9]+/gi, "_");
+  a.href = url;
+  a.download = `${safeCompany}_${monthName(state.month)}_${state.year}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  document.getElementById("statusMsg").textContent = "CSV file downloaded.";
+}
+
+function parseCsvLine(line) {
+  const result = [];
+  let cur = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }
+        else { inQuotes = false; }
+      } else {
+        cur += ch;
+      }
+    } else {
+      if (ch === '"') inQuotes = true;
+      else if (ch === ",") { result.push(cur); cur = ""; }
+      else cur += ch;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+function handleImportCsv(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    try {
+      let text = evt.target.result;
+      if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+      const lines = text.split(/\r\n|\n/).filter(l => l.length > 0);
+      if (lines.length < 2) { alert("CSV file looks empty."); return; }
+      const header = parseCsvLine(lines[0]);
+      const dayCols = [];
+      header.forEach((h, i) => {
+        const m = h.match(/^Day(\d+)$/);
+        if (m) dayCols.push({ index: i, day: parseInt(m[1], 10) });
+      });
+      const remarksIdx = header.indexOf("Remarks");
+
+      const newWorkers = [];
+      const currentKey = monthKeyOf(state.year, state.month);
+      for (let li = 1; li < lines.length; li++) {
+        const cols = parseCsvLine(lines[li]);
+        const dayMarks = {};
+        dayCols.forEach(dc => {
+          const v = (cols[dc.index] || "").trim().toUpperCase();
+          if (["P","A","H","L","WO"].includes(v)) dayMarks[dc.day] = v;
+        });
+        const worker = {
+          name: cols[1] || "",
+          category: cols[2] || "Labour",
+          designation: cols[3] || "",
+          remarks: remarksIdx > -1 ? (cols[remarksIdx] || "") : "",
+          marksByMonth: { [currentKey]: dayMarks }
+        };
+        newWorkers.push(worker);
+      }
+
+      if (confirm(`Import ${newWorkers.length} worker(s) from this CSV into ${monthName(state.month)} ${state.year}? This will replace the current table.`)) {
+        state.workers = newWorkers;
+        render();
+        scheduleSave();
+      }
+    } catch (err) {
+      alert("Could not read this CSV file. Please check its format.");
+    }
+    document.getElementById("importCsvInput").value = "";
+  };
+  reader.readAsText(file);
+}
+
+function updatePrintHeader() {
+  const company = state.company && state.company.trim() ? state.company : "____________________";
+  document.getElementById("printHeader").innerHTML =
+    `<b>Company / Site:</b> ${company} &nbsp;&nbsp;&nbsp; <b>Month:</b> ${monthName(state.month)} &nbsp;&nbsp;&nbsp; <b>Year:</b> ${state.year}`;
+}
+
+async function init() {
+  await loadState();
+  attachToolbarEvents();
+  render();
+}
+
+init();
+
+})();
+</script>
+
+<script>
+// ============ MACHINE LOGBOOK APP LOGIC (isolated scope) ============
+(function() {
+
+const $ = id => document.getElementById(id);
+let entries = [];
+let editingId = null;
+let scanTarget = null;
+let currentPhotos = { initial: null, final: null };
+let operatorFilterValue = '';
+let avgFuelAutofilled = false;
+
+function todayStr(){
+  const d = new Date();
+  return d.toISOString().slice(0,10);
+}
+$('date').value = todayStr();
+
+function computeTotal(){
+  const i = parseFloat($('initial').value);
+  const f = parseFloat($('final').value);
+  const errEl = $('formError');
+  let diff = null;
+  if(!isNaN(i) && !isNaN(f)){
+    diff = f - i;
+    if(diff < 0){
+      $('entryTotal').textContent = '-- hrs';
+      errEl.style.display = 'block';
+      diff = null;
+    } else {
+      errEl.style.display = 'none';
+      $('entryTotal').textContent = diff.toFixed(1) + ' hrs';
+    }
+  } else {
+    errEl.style.display = 'none';
+    $('entryTotal').textContent = '0.0 hrs';
+  }
+  updateRates(diff);
+  return diff;
+}
+
+// Expected fuel use = manually entered average consumption (L/hr) x hours run.
+// Fuel balance = actual fuel refilled minus expected fuel use (negative = used more than refilled).
+function updateRates(hrs){
+  const fuel = parseFloat($('fuelRefill').value) || 0;
+  const avgRate = parseFloat($('avgFuelConsumption').value);
+  const priceRate = parseFloat($('fuelPriceRate').value) || 0;
+  const expected = (hrs && hrs > 0 && !isNaN(avgRate)) ? avgRate * hrs : 0;
+  const balance = fuel - expected;
+  const fuelCost = fuel * priceRate;
+  $('entryExpectedFuel').textContent = expected.toFixed(1);
+  $('entryFuelBalance').textContent = balance.toFixed(1);
+  $('entryFuelCost').textContent = fuelCost.toFixed(2);
+}
+$('initial').addEventListener('input', computeTotal);
+$('final').addEventListener('input', computeTotal);
+$('avgFuelConsumption').addEventListener('input', computeTotal);
+$('fuelRefill').addEventListener('input', computeTotal);
+$('fuelPriceRate').addEventListener('input', computeTotal);
+
+// If the user types their own avg consumption, stop auto-filling/overwriting it for this entry.
+$('avgFuelConsumption').addEventListener('input', () => {
+  avgFuelAutofilled = false;
+  $('avgFuelHint').textContent = '';
+});
+
+// Look up this machine's past average fuel consumption (L/hr) so the field —
+// and therefore the running tank balance — can fill itself in automatically.
+function getMachineAvgRate(machine){
+  const key = (machine || '').trim().toLowerCase();
+  if(!key) return null;
+  const rates = entries
+    .filter(e => (e.machine || '').trim().toLowerCase() === key && e.avgFuelConsumption)
+    .map(e => e.avgFuelConsumption);
+  if(rates.length === 0) return null;
+  return rates.reduce((a,b) => a + b, 0) / rates.length;
+}
+
+function autofillAvgFuel(){
+  const field = $('avgFuelConsumption');
+  if(field.value && !avgFuelAutofilled) return; // user has typed their own value
+  const suggested = getMachineAvgRate($('machine').value);
+  if(suggested){
+    field.value = suggested.toFixed(2);
+    avgFuelAutofilled = true;
+    $('avgFuelHint').textContent = `Auto-filled from ${$('machine').value.trim()}'s past entries — edit if needed`;
+    computeTotal();
+  } else if(avgFuelAutofilled){
+    field.value = '';
+    avgFuelAutofilled = false;
+    $('avgFuelHint').textContent = '';
+    computeTotal();
+  }
+}
+$('machine').addEventListener('blur', autofillAvgFuel);
+$('machine').addEventListener('input', autofillAvgFuel);
+
+const STORAGE_KEY = 'machine-logbook-entries';
+
+async function loadEntries(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    entries = raw ? JSON.parse(raw) : [];
+  }catch(e){
+    entries = [];
+  }
+  renderList();
+  renderTotal();
+}
+
+async function saveEntries(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  }catch(e){
+    console.error('Storage error', e);
+    alert('Could not save. Your browser may be blocking storage for local files. Try exporting to CSV as a backup.');
+  }
+}
+
+function renderTotal(){
+  const sumHrs = entries.reduce((s,e)=> s + (e.total || 0), 0);
+  const sumFuel = entries.reduce((s,e)=> s + (e.fuelRefill || 0), 0);
+  const sumExpectedFuel = entries.reduce((s,e)=> s + (e.expectedFuel || 0), 0);
+  const sumFuelCost = entries.reduce((s,e)=> s + (e.fuelCost || 0), 0);
+  $('grandTotal').textContent = sumHrs.toFixed(1);
+  $('fuelRateAvg').textContent = sumHrs > 0 ? (sumFuel / sumHrs).toFixed(2) : '0.00';
+  $('fuelBalanceTotal').textContent = (sumFuel - sumExpectedFuel).toFixed(1);
+  $('fuelTotalBadge').textContent = sumFuel.toFixed(1);
+  $('fuelCostTotalBadge').textContent = sumFuelCost.toFixed(2);
+  renderOperatorFilterOptions();
+  renderOperatorTotals();
+}
+
+// Build a name -> {hours, fuel} map from all entries, grouping under "Unassigned"
+// when no operator was recorded on the entry.
+function getOperatorTotals(){
+  const map = {};
+  entries.forEach(e => {
+    const name = (e.operator || '').trim() || 'Unassigned';
+    if(!map[name]) map[name] = { hours: 0, fuel: 0 };
+    map[name].hours += (e.total || 0);
+    map[name].fuel += (e.fuelRefill || 0);
+  });
+  return map;
+}
+
+function renderOperatorFilterOptions(){
+  const sel = $('operatorFilter');
+  const names = Object.keys(getOperatorTotals()).filter(n => n !== 'Unassigned').sort((a,b)=> a.localeCompare(b));
+  const prev = operatorFilterValue;
+  sel.innerHTML = '<option value="">All operators</option>' +
+    names.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('') +
+    (Object.keys(getOperatorTotals()).includes('Unassigned') ? '<option value="Unassigned">Unassigned</option>' : '');
+  if(sel.querySelector(`option[value="${CSS.escape(prev)}"]`)) sel.value = prev;
+  else { operatorFilterValue = ''; sel.value = ''; }
+
+  $('operatorNames').innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
+}
+
+function renderOperatorTotals(){
+  const map = getOperatorTotals();
+  const names = Object.keys(map).sort((a,b)=> a.localeCompare(b));
+  const box = $('operatorTotals');
+  if(names.length === 0){
+    box.innerHTML = '<div class="empty">No entries yet.</div>';
+    return;
+  }
+  box.innerHTML = names.map(n => `
+    <div class="op-row">
+      <span class="op-name">${escapeHtml(n)}</span>
+      <span>
+        <span class="op-fig">${map[n].fuel.toFixed(1)}L fuel</span>
+        <span class="op-hrs">${map[n].hours.toFixed(1)} hrs</span>
+      </span>
+    </div>
+  `).join('');
+}
+$('operatorFilter').addEventListener('change', () => {
+  operatorFilterValue = $('operatorFilter').value;
+  renderList();
+});
+
+function renderList(){
+  const list = $('logList');
+  if(entries.length === 0){
+    list.innerHTML = '<div class="empty">No entries yet. Add your first reading above.</div>';
+    return;
+  }
+  const filtered = operatorFilterValue
+    ? entries.filter(e => ((e.operator || '').trim() || 'Unassigned') === operatorFilterValue)
+    : entries;
+  if(filtered.length === 0){
+    list.innerHTML = '<div class="empty">No entries for this operator.</div>';
+    return;
+  }
+  const sorted = [...filtered].sort((a,b)=> (b.date||'').localeCompare(a.date||'') || b.id - a.id);
+  const balances = getRunningBalances();
+  list.innerHTML = sorted.map(e => `
+    <div class="log-entry" data-id="${e.id}">
+      <div>
+        <div class="machine">${escapeHtml(e.machine || 'Unnamed machine')}</div>
+        <div class="meta">${e.date || ''}${e.operator ? ' · ' + escapeHtml(e.operator) : ''}${e.location ? ' · ' + escapeHtml(e.location) : ''}</div>
+        <div class="readings"><b>${e.initial}</b> &rarr; <b>${e.final}</b> hrs${(e.description || e.notes) ? '<br>' + escapeHtml(e.description || e.notes) : ''}${(e.fuelRefill || e.avgFuelConsumption) ? '<br>' + fuelLine(e) : ''}${e.avgFuelConsumption ? '<br>' + tankLine(balances[e.id]) : ''}</div>
+        ${(e.initialPhoto || e.finalPhoto) ? `
+        <div class="entry-photos">
+          ${e.initialPhoto ? `<div class="photo-block"><img src="${e.initialPhoto}" data-full="${e.initialPhoto}" title="Initial reading photo"><span class="photo-cap">Initial reading</span></div>` : ''}
+          ${e.finalPhoto ? `<div class="photo-block"><img src="${e.finalPhoto}" data-full="${e.finalPhoto}" title="Final reading photo"><span class="photo-cap">Final reading</span></div>` : ''}
+        </div>` : ''}
+      </div>
+      <div class="hrs">${e.total.toFixed(1)}<span class="u">hrs</span></div>
+      <div class="entry-actions">
+        <button class="edit" data-id="${e.id}">Edit</button>
+        <button class="del" data-id="${e.id}">Delete</button>
+      </div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.edit').forEach(b => b.addEventListener('click', () => loadForEdit(parseInt(b.dataset.id))));
+  list.querySelectorAll('.del').forEach(b => b.addEventListener('click', () => deleteEntry(parseInt(b.dataset.id))));
+  list.querySelectorAll('.entry-photos img').forEach(img => img.addEventListener('click', () => openLightbox(img.dataset.full)));
+}
+
+function openLightbox(src){
+  $('lightboxImg').src = src;
+  $('lightbox').classList.add('open');
+}
+$('lightbox').addEventListener('click', () => {
+  $('lightbox').classList.remove('open');
+  $('lightboxImg').src = '';
+});
+
+// Tracks the fuel tank level for each machine over time: a refill tops it up,
+// and every entry with an avg consumption rate burns down expected fuel from it —
+// so a 200L refill on day 1 shows itself draining across the entries logged
+// over the next 2-3 days until the next refill tops it back up.
+function getRunningBalances(){
+  const byMachine = {};
+  entries.forEach(e => {
+    const key = e.machine || '';
+    (byMachine[key] = byMachine[key] || []).push(e);
+  });
+  const balanceMap = {};
+  Object.values(byMachine).forEach(list => {
+    const chrono = [...list].sort((a,b)=> (a.date||'').localeCompare(b.date||'') || a.id - b.id);
+    let running = 0;
+    chrono.forEach(e => {
+      running += (e.fuelRefill || 0) - (e.expectedFuel || 0);
+      balanceMap[e.id] = running;
+    });
+  });
+  return balanceMap;
+}
+
+function tankLine(bal){
+  if(bal === undefined) return '';
+  const cls = bal < 0 ? 'tank-low' : 'tank-ok';
+  return `<span class="${cls}">Tank running balance: <b>${bal.toFixed(1)}L</b></span>`;
+}
+
+function fuelLine(e){
+  const parts = [];
+  if(e.fuelRefill) parts.push(`Fuel ${e.fuelRefill}L`);
+  if(e.fuelRefill) parts.push(`Rate ${(e.fuelRate || 0).toFixed(2)} L/hr`);
+  if(e.fuelPriceRate) parts.push(`Fuel rate ${e.fuelPriceRate}/L -> amount ${(e.fuelCost || 0).toFixed(2)}`);
+  if(e.avgFuelConsumption) parts.push(`Avg ${e.avgFuelConsumption} L/hr -> expected ${(e.expectedFuel || 0).toFixed(1)}L`);
+  if(e.fuelRefill || e.avgFuelConsumption) parts.push(`Balance ${(e.fuelBalance || 0).toFixed(1)}L`);
+  return escapeHtml(parts.join(' · '));
+}
+
+function escapeHtml(s){
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function loadForEdit(id){
+  const e = entries.find(x => x.id === id);
+  if(!e) return;
+  editingId = id;
+  $('machine').value = e.machine || '';
+  $('date').value = e.date || todayStr();
+  $('operator').value = e.operator || '';
+  $('initial').value = e.initial;
+  $('final').value = e.final;
+  $('fuelRefill').value = e.fuelRefill || '';
+  $('fuelPriceRate').value = e.fuelPriceRate || '';
+  $('avgFuelConsumption').value = e.avgFuelConsumption || '';
+  $('location').value = e.location || '';
+  $('description').value = e.description || e.notes || '';
+  currentPhotos.initial = e.initialPhoto || null;
+  currentPhotos.final = e.finalPhoto || null;
+  avgFuelAutofilled = false;
+  $('avgFuelHint').textContent = '';
+  showPreview('initial', currentPhotos.initial);
+  showPreview('final', currentPhotos.final);
+  computeTotal();
+  $('saveBtn').textContent = 'Update entry';
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function deleteEntry(id){
+  if(!confirm('Delete this log entry?')) return;
+  entries = entries.filter(e => e.id !== id);
+  saveEntries();
+  renderList();
+  renderTotal();
+}
+
+function clearForm(){
+  editingId = null;
+  $('machine').value = '';
+  $('date').value = todayStr();
+  $('operator').value = '';
+  $('initial').value = '';
+  $('final').value = '';
+  $('fuelRefill').value = '';
+  $('fuelPriceRate').value = '';
+  $('avgFuelConsumption').value = '';
+  $('location').value = '';
+  $('description').value = '';
+  $('formError').style.display = 'none';
+  $('entryTotal').textContent = '0.0 hrs';
+  $('entryExpectedFuel').textContent = '0.0';
+  $('entryFuelBalance').textContent = '0.0';
+  $('entryFuelCost').textContent = '0.0';
+  $('saveBtn').textContent = 'Save entry';
+  currentPhotos = { initial: null, final: null };
+  showPreview('initial', null);
+  showPreview('final', null);
+  avgFuelAutofilled = false;
+  $('avgFuelHint').textContent = '';
+  $('initialPreview').closest('.meter').querySelectorAll('.ocr-status').forEach(s => s.textContent = '');
+  $('finalPreview').closest('.meter').querySelectorAll('.ocr-status').forEach(s => s.textContent = '');
+}
+$('clearBtn').addEventListener('click', clearForm);
+
+function showPreview(target, src){
+  const img = $(target + 'Preview');
+  if(src){
+    img.src = src;
+    img.style.display = 'block';
+  } else {
+    img.src = '';
+    img.style.display = 'none';
+  }
+}
+$('initialPreview').addEventListener('click', () => currentPhotos.initial && openLightbox(currentPhotos.initial));
+$('finalPreview').addEventListener('click', () => currentPhotos.final && openLightbox(currentPhotos.final));
+
+$('saveBtn').addEventListener('click', async () => {
+  const machine = $('machine').value.trim();
+  const date = $('date').value;
+  const operator = $('operator').value.trim();
+  const initial = parseFloat($('initial').value);
+  const final = parseFloat($('final').value);
+  const location = $('location').value.trim();
+  const description = $('description').value.trim();
+  const fuelRefill = parseFloat($('fuelRefill').value) || 0;
+  const fuelPriceRate = parseFloat($('fuelPriceRate').value) || 0;
+  const avgFuelConsumption = parseFloat($('avgFuelConsumption').value) || 0;
+
+  if(!machine){
+    $('machine').focus();
+    return;
+  }
+  if(isNaN(initial) || isNaN(final)){
+    $('formError').textContent = 'Enter both an initial and final reading.';
+    $('formError').style.display = 'block';
+    return;
+  }
+  if(final < initial){
+    $('formError').textContent = 'Final reading must be greater than or equal to initial reading.';
+    $('formError').style.display = 'block';
+    return;
+  }
+  $('formError').style.display = 'none';
+
+  const total = final - initial;
+  const fuelRate = total > 0 ? fuelRefill / total : 0;
+  const expectedFuel = total > 0 ? avgFuelConsumption * total : 0;
+  const fuelBalance = fuelRefill - expectedFuel;
+  const fuelCost = fuelRefill * fuelPriceRate;
+
+  if(editingId){
+    const idx = entries.findIndex(e => e.id === editingId);
+    if(idx > -1){
+      entries[idx] = {...entries[idx], machine, date, operator, initial, final, total,
+        location, description, fuelRefill, fuelRate, fuelPriceRate, fuelCost, avgFuelConsumption, expectedFuel, fuelBalance,
+        initialPhoto: currentPhotos.initial, finalPhoto: currentPhotos.final};
+      delete entries[idx].notes;
+      delete entries[idx].oilAdded;
+      delete entries[idx].oilRate;
+    }
+  } else {
+    entries.push({
+      id: Date.now(),
+      machine, date, operator, initial, final, total,
+      location, description, fuelRefill, fuelRate, fuelPriceRate, fuelCost, avgFuelConsumption, expectedFuel, fuelBalance,
+      initialPhoto: currentPhotos.initial, finalPhoto: currentPhotos.final
+    });
+  }
+  await saveEntries();
+  renderList();
+  renderTotal();
+  clearForm();
+});
+
+// ---- Image scan / extraction ----
+$('logList'); // no-op reference
+document.querySelectorAll('.scan-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    scanTarget = btn.dataset.target;
+    $('fileInput').click();
+  });
+});
+
+$('fileInput').addEventListener('change', async (ev) => {
+  const file = ev.target.files[0];
+  if(!file || !scanTarget) return;
+  const btn = document.querySelector(`.scan-btn[data-target="${scanTarget}"]`);
+  const statusEl = btn.parentElement.querySelector('.ocr-status');
+  const originalText = btn.textContent;
+  btn.textContent = 'Reading...';
+  btn.disabled = true;
+  if(statusEl) statusEl.textContent = 'Loading OCR engine...';
+
+  try{
+    const originalDataUrl = await fileToDataUrl(file);
+
+    // Keep a compressed copy of the photo with the entry regardless of OCR outcome.
+    const compressed = await compressImage(originalDataUrl, 700, 0.6);
+    currentPhotos[scanTarget] = compressed;
+    showPreview(scanTarget, compressed);
+
+    if(typeof Tesseract === 'undefined'){
+      throw new Error('Tesseract.js did not load (no internet connection?).');
+    }
+    const { data: { text } } = await Tesseract.recognize(originalDataUrl, 'eng', {
+      tessedit_char_whitelist: '0123456789.',
+      logger: (m) => {
+        if(statusEl && m.status){
+          const pct = m.progress ? ` ${Math.round(m.progress*100)}%` : '';
+          statusEl.textContent = m.status + pct;
+        }
+      }
+    });
+
+    const cleaned = extractBestNumber(text);
+    if(!cleaned){
+      if(statusEl) statusEl.textContent = 'Photo saved, but no number was read — check it or enter manually.';
+    } else {
+      $(scanTarget).value = cleaned;
+      computeTotal();
+      if(statusEl) statusEl.textContent = 'Read: ' + cleaned + ' (check it looks right)';
+    }
+  }catch(err){
+    console.error(err);
+    alert('Something went wrong reading the photo (' + err.message + '). The photo is kept if it was captured; enter the reading manually if needed.');
+    if(statusEl) statusEl.textContent = '';
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+    $('fileInput').value = '';
+    scanTarget = null;
+  }
+});
+
+// Resize/recompress an image data URL so it's small enough to store many of in localStorage.
+function compressImage(dataUrl, maxDim, quality){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if(width > maxDim || height > maxDim){
+        const scale = maxDim / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+}
+
+// Pick the longest run of digits (with an optional decimal point) out of the OCR text,
+// since hour-meter photos often pick up stray marks/labels around the actual reading.
+function extractBestNumber(text){
+  const matches = (text || '').match(/\d+(?:\.\d+)?/g);
+  if(!matches || matches.length === 0) return '';
+  matches.sort((a,b) => b.replace('.', '').length - a.replace('.', '').length);
+  return matches[0];
+}
+
+function fileToDataUrl(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ---- Export CSV ----
+$('exportBtn').addEventListener('click', () => {
+  if(entries.length === 0){
+    alert('No entries to export yet.');
+    return;
+  }
+  const balances = getRunningBalances();
+  const header = ['Date','Machine','Operator','Location','Description','Initial Reading','Final Reading','Total Hours','Fuel Refill (L)','Fuel Rate (L/hr)','Fuel Rate (Amount/L)','Fuel Amount','Avg Fuel Consumption (L/hr)','Expected Fuel Use (L)','Fuel Balance (L)','Running Tank Balance (L)'];
+  const rows = [...entries].sort((a,b)=> (a.date||'').localeCompare(b.date||'')).map(e => [
+    e.date || '', e.machine || '', e.operator || '', e.location || '', (e.description || e.notes || '').replace(/"/g,'""'),
+    e.initial, e.final, e.total.toFixed(1),
+    (e.fuelRefill || 0).toFixed(1), (e.fuelRate || 0).toFixed(2),
+    (e.fuelPriceRate || 0).toFixed(2), (e.fuelCost || 0).toFixed(2),
+    (e.avgFuelConsumption || 0).toFixed(2), (e.expectedFuel || 0).toFixed(1), (e.fuelBalance || 0).toFixed(1),
+    (balances[e.id] || 0).toFixed(1)
+  ]);
+  const csv = [header, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'machine-logbook.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+$('printBtn').addEventListener('click', () => {
+  if(entries.length === 0){
+    alert('No entries to print yet.');
+    return;
+  }
+  window.print();
+});
+
+loadEntries();
+
+})();
+</script>
+
+</body>
+</html>
